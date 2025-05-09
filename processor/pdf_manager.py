@@ -1,8 +1,15 @@
+import os
+import sys
+# 프로젝트 폴더를 루트로 가정
+PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(PROJECT_PATH)
+
 import tempfile
 from typing import List, Optional
+
 from storage.gcs_client import GCSStorageClient
 from processor.splitter import split_pdf_to_images
-from processor.extractor import extract_text, extract_description
+from processor.extractor import extract_text, extract_summary
 from db.repository import Repository
 from db.models import PDFDocument, PageStatus
 
@@ -60,18 +67,22 @@ class PDFManager:
 
                     # 4-3. OCR + 설명 생성 (Gemini API 사용)
                     extracted_text, ocr_err = extract_text(local_img_path)
-                    description, desc_err = extract_description(local_img_path)
+                    summ_input_paths = image_paths[:min(5, len(image_paths))] + [local_img_path]
+                    summary, summ_err = extract_summary(
+                        image_paths=summ_input_paths,
+                        file_name=gcs_pdf_path,
+                    )
 
                     # 4-4. 상태 결정
-                    is_success = ocr_err is None and desc_err is None
+                    is_success = ocr_err is None and summ_err is None
                     status = PageStatus.SUCCESS if is_success else PageStatus.FAILED
-                    error_msg = "\n".join(filter(None, [ocr_err, desc_err])) or None
+                    error_msg = "\n".join(filter(None, [ocr_err, summ_err])) or None
 
                     # 4-5. 페이지 레코드 업데이트
                     self.repo.update_page_record(
                         page_id=page.id,
                         extracted_text=extracted_text,
-                        description=description,
+                        summary=summary,
                         status=status,
                         error_message=error_msg
                     )
@@ -81,3 +92,7 @@ class PDFManager:
 
             # 5. 문서 처리 완료로 마크
             self.repo.mark_document_processed(gcs_pdf_path)
+
+
+if __name__ == "__main__":
+    pass

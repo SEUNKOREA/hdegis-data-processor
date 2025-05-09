@@ -63,5 +63,20 @@ $$
 # Here is an image of document. Proceed with the transcription.
 """
 
-EXTRACT_DESCRIPTION_PROMPT="""
+EXTRACT_SUMMARY_PROMPT_1="""
+# Here is a basic information about document.
+- file_name: {file_name}
+- description: {description}
+
+# Here is the first 5 pages of the documents.
+"""
+
+EXTRACT_SUMMARY_PROMPT_2="""
+# Here is the chunk we want to situate within the whole document
+"""
+
+EXTRACT_SUMMARY_PROMPT_3="""
+# Task 
+Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. 
+Answer only with the succinct context and nothing else.
 """

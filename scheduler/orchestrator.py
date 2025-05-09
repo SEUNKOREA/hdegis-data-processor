@@ -43,13 +43,13 @@ def run_pipeline() -> None:
         # 5. 처리되지 않은 문서들만 가져오기
         pending_docs = repo.get_pending_documents()
 
-        for doc in pending_docs:
+        for i, doc in enumerate(pending_docs, start=1):
             try:
-                print(f"처리 시작: {doc.gcs_path}")
+                print(f"({i:03d}/{len(pending_docs):03d}) 처리 시작: {doc.gcs_path}")
                 manager.process(doc.gcs_path)
-                print(f"처리 완료: {doc.gcs_path}")
+                print(f"({i:03d}/{len(pending_docs):03d}) 처리 완료: {doc.gcs_path}")
             except Exception as e:
-                print(f"문서 처리 실패: {doc.gcs_path} - 에러: {e}")
+                print(f"({i:03d}/{len(pending_docs):03d}) 문서 처리 실패: {doc.gcs_path} - 에러: {e}")
 
     finally:
         session.close()

@@ -35,7 +35,7 @@ class PDFPage(Base):
     page_number: int = Column(Integer, nullable=False)
     gcs_path: str = Column(String(1000), nullable=False)
     extracted_text: str = Column(Text, nullable=True)
-    description: str = Column(Text, nullable=True)
+    summary: str = Column(Text, nullable=True)
     status: PageStatus = Column(Enum(PageStatus), default=PageStatus.PENDING)
     error_message: str = Column(Text, nullable=True)
     created_at: datetime = Column(DateTime, default=datetime.utcnow)

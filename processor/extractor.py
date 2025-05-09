@@ -1,11 +1,17 @@
-from typing import Tuple, Optional
+import os
+import sys
+# 프로젝트 폴더를 루트로 가정
+PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(PROJECT_PATH)
+
+from typing import Tuple, Optional, List
 import base64
 import pathlib
 from google import genai
 from google.genai import types
 
 from config import PROJECT_ID, LOCATION
-from prompts import EXTRACT_TEXT_PROMPT, EXTRACT_DESCRIPTION_PROMPT
+from prompts import EXTRACT_TEXT_PROMPT, EXTRACT_SUMMARY_PROMPT_1, EXTRACT_SUMMARY_PROMPT_2, EXTRACT_SUMMARY_PROMPT_3
 
 
 # Vertex AI용 클라이언트 설정
@@ -23,7 +29,7 @@ def load_image_as_bytes(image_path: str) -> bytes:
         return f.read()
 
 
-def extract_text_with_gemini(image_path: str) -> Tuple[Optional[str], Optional[str]]:
+def extract_text(image_path: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Gemini를 이용해 이미지에서 Markdown 기반 텍스트 추출
     """
@@ -36,7 +42,7 @@ def extract_text_with_gemini(image_path: str) -> Tuple[Optional[str], Optional[s
             types.Content(
                 role="user",
                 parts=[
-                    types.Part.from_text(prompt),
+                    types.Part.from_text(text=prompt),
                     types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
                 ]
             )
@@ -67,24 +73,63 @@ def extract_text_with_gemini(image_path: str) -> Tuple[Optional[str], Optional[s
         return None, f"텍스트 추출 오류: {e}"
 
 
-def extract_description_with_gemini(image_path: str) -> Tuple[Optional[str], Optional[str]]:
+def extract_summary(image_paths: List[str], file_name: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Gemini를 이용해 이미지 내용 요약/설명 추출
     """
-    try:
-        prompt = EXTRACT_DESCRIPTION_PROMPT.strip()
 
-        image_bytes = load_image_as_bytes(image_path)
+    def get_description(file_name: str):
+        description_mapping = {
+            '1. International Standards': 'Includes international standard and specification documents required for high voltage circuit breaker design and testing. Refer to the technical specifications of global standardization organizations such as IEC and IEEE. Required data for product development and design standard establishment.',
+            'IEC': 'Standard and specification documents on high-voltage equipment issued by the International Conference on Electrical Standards (IEC). Provide global standards for design, testing, safety standards, etc.',
+            'IEEE': 'The American Institute of Electrical and Electronics (IEEE) specifications and standards, including market-focused design standards and testing procedures in North America.',
+            '2. Type Test Reports': 'This is the type test result report of the actual manufactured circuit breaker. It is classified by model and year and details test items, insulation performance, and blocking performance.',
+            '145SP-3': 'Type test data for circuit breaker model 145SP-3.',
+            '145 kV 40 kA MS (2017)': 'A test report of a 145kV / 40kA class circuit breaker tested in 2017 of the model 145SP-3.',
+            '300SR': 'Type test data for circuit breaker model 300SR.',
+            '245 kV 50 kA MS (2020)': 'Test report of 245kV / 50kA circuit breaker tested in 2020 of Model 300SR.',
+            '245 kV 63 kA MS (2024)': 'Test report of 245kV / 63kA circuit breaker carried out in 2024 of Model 300SR.',
+            '3. Customer Standard Specifications': 'Standard Specifications by Country/Power Authority/Consumer.\nStandard Specification document provided by each country and customer. Refer to when delivering the product if you need a design that reflects customer requirements. This may include local application regulations and special requirements.',
+            'Endeavour Energy': 'Standard specifications of Endeavour Energy, Power company in Australia.',
+            'OETC': 'Standard specifications of OETC, Power company in Oman.',
+            'SEC': 'Standard specifications of SEC, Power company in Saudi Arabia.',
+            'Iberdrola': 'Standard specifications of Iberdrola, Power company in Spain.',
+            'REE': 'Standard specifications of REE, Power company in Spain.',
+        }
+        keys = file_name.split('/')
+        description = '\n'.join([description_mapping.get(k, "") for k in keys])
+        return description
+
+    try:
+        parts = []
+
+        prompt_1 = EXTRACT_SUMMARY_PROMPT_1.format(
+            file_name=file_name,
+            description=get_description(file_name)
+        ).strip()
+        parts.append(types.Part.from_text(prompt_1))
+
+        context_paths = image_paths[:min(5, len(image_paths))]
+        for img_path in context_paths:
+            image_bytes = load_image_as_bytes(img_path)
+            parts.append(types.Part.from_bytes(data=image_bytes, mime_type="image/png"))
+
+        prompt_2 = EXTRACT_SUMMARY_PROMPT_2.strip()
+        parts.append(types.Part.from_text(prompt_2))
+
+        target_path = image_paths[-1]
+        image_bytes = load_image_as_bytes(target_path )
+        parts.append(types.Part.from_bytes(data=image_bytes, mime_type="image/png"))
+        
+        prompt_3 = EXTRACT_SUMMARY_PROMPT_3.strip()
+        parts.append(types.Part.from_text(prompt_3))
 
         contents = [
             types.Content(
                 role="user",
-                parts=[
-                    types.Part.from_text(prompt),
-                    types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-                ]
+                parts=parts,
             )
-        ]
+        ]        
 
         config = types.GenerateContentConfig(
             temperature=0.2,
@@ -108,4 +153,13 @@ def extract_description_with_gemini(image_path: str) -> Tuple[Optional[str], Opt
         return result.text.strip(), None
 
     except Exception as e:
-        return None, f"설명 추출 오류: {e}"
+        return None, f"요약 추출 오류: {e}"
+
+
+if __name__ == "__main__":
+    ###################### 함수동작 TEST ###################
+    image_path = "sample.png"
+    res = extract_text(image_path=image_path)
+    print(res)
+
+

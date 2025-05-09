@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "pjt-dev-hdegis-app-454401",
+  "private_key_id": "bd4fac2d452b6b9b1bf9a04bcd0e6da16a891dd1",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCl41Ve45LbTfp5\nUtS4SU+nQwtAYZqjkYQfEVwRTdN1+uRkFRAVvJ1EfRu39O2IawamCIXEGz/FXDcd\nqd8Uy7qm+PNX3Bo4MBqpRR1pY/2CdM38Rw+vXMHFOA0TeAYrQmJwdRN9+IPdtsBK\ngu6jAQ2H9yVcMuKWF2qgV3a5Swu4UMkXoQAU34qYMyCmaaLeTD3CZoMOr7GUthKl\nMaC8f8dV8c4Q1m8ozJtk9QXgYNFl+5TKebctD6Cz+HA9TalV1onI2cpEiG+iJlGJ\nkFrhefIeu8ISIeknZ1MmuhIjJ1mZZjvhXvKKQ4m6S9QiAr9UfzYw/0xRj89rV6cJ\n7dIeS6jZAgMBAAECggEADqV8vc0FWVw614gVr1O3DFiMtMQpXXRqoDztzmVQXKP9\n6Ew9HajdOyp5+Qr6B0e+et2ubyXMwpslY/bB8y8YWB0LjIqqvKKaqAP/Lcqd8Re+\nXB4rZ1tJjHp/b7mdfyee/g4y3gtuxnOX6hGXX52nLoWxWcDwZToaDaAgo7Qu4Q4J\n0iATvNDaWYCQsl5sC3b9xjk1jcDkXWRv4EzmiEvjKScEWrR+VcCSSqe2P5lKW/+4\nPypCG+SVYF1qCFArXe2yrkOH+020iNDcAf0ZFlvOTqkaRh+aHHQjEd7nO93Ezd+d\nNTFI2pL5rjRKCgHMdXnvO3PDDdwIZ87/dtDA0lkkdQKBgQDZYKlTzpt4rQ9L4MoH\nm2agHIyfbg3MvUj71gPnNC2k1gmYM2Q9T0bkqYGavESqk/2g790X0q85jCKbxmkh\n/9Ztyd32qKUwiBH6/ENZF8Ao3PSNShY4bGbVYAmY48LzC4Twc+kKeCj3i98T9Z86\nl/GzgOBGYHxlWa/wVIAl0PxjkwKBgQDDXLA+Hb5RjXQbbf078G2L9MtujLBe4NvF\nalD6eKfArazUaWuZ0pwkhDyIcfPN++LG6LPlf+wbm2Pu2EaKC41+wtHYO3BXi3Rp\nERBoFc/v0MP280pfA0DPn7LMkNtPBLm9EJbV3SsP5Rojx2fgu70v3T+bd6+qfhq3\ncIih8eCdYwKBgQDHFOzfEUh4E97/eibtIpixqJPta4h96xlNc2rts27eGRx+ZQq3\nz8Q4pTlKcoRcyN6vJx6Qs+bAyKPlkKg2eC11LTz4qulm8ietep1fmg3mHr5mK+T/\n1d+0KZmAiY/AsdsVsMJMUVILrPEoQXqL2h6FbFF6guFKnQIyE+GtQKH1uwKBgHm1\nfAMmypPKGWShUFuQPN8tgbN8qMBjO+ewhYSVuITcbkji6Gsrf6VsUL38qBRS8YRU\nIwc+e9zzIP4C9Wc5LUykmNEqrqGLutleDSebNzFDkWJ/TX0F7NGsv1qcgFSpMAHu\nnNnd8N71LyTNLRUgQQvZva/gj6sa5xATZrvlkbbbAoGAI5Ohe+sYnFMa7pTIdBOw\nT1vxU9dAkndTSV8nBwV+2lHq+C5qfYkXARKS6SzxMoDuHbslTqPqya3J9lrOm1vN\naH4gPMav4B9To2gi1oFzZkiQdgYrlEDbML0RXanhWN555yIwXZmzT9xSwmBB8PJE\nnFodpQkjopCrYSKfmtNMAn8=\n-----END PRIVATE KEY-----\n",
+  "client_email": "sa-dev-hdegis-app-collect@pjt-dev-hdegis-app-454401.iam.gserviceaccount.com",
+  "client_id": "103059140482316492005",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/sa-dev-hdegis-app-collect%40pjt-dev-hdegis-app-454401.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

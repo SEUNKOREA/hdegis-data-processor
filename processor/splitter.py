@@ -8,23 +8,6 @@ from typing import List
 from pdf2image import convert_from_path
 from storage.gcs_client import GCSStorageClient
 
-def split_pdf_to_images(pdf_path: str, output_folder: str, dpi: int = 300) -> List[str]:
-    """
-    PDF를 페이지별 이미지로 분리하고,
-    생성된 로컬 이미지 파일 경로 리스트를 반환.
-    """
-    os.makedirs(output_folder, exist_ok=True)
-    
-    images = convert_from_path(pdf_path, dpi=dpi, output_folder=output_folder)
-    
-    image_paths = []
-    for i, img in enumerate(images, start=1):
-        img_path = os.path.join(output_folder, f"page-{i:05d}.png")
-        img.save(img_path, "PNG")
-        image_paths.append(img_path)
-    
-    return image_paths
-
 
 def split_pdf_to_images_and_upload(
         local_pdf_path: str,

@@ -12,17 +12,17 @@ class GCSStorageClient:
         blobs = bucket.list_blobs(prefix=prefix)
         return [blob.name for blob in blobs if blob.name.lower().endswith(".pdf")]
     
-    def download_pdf(self, gcs_path: str, local_path: str) -> str:
-        bucket = self.client.bucket(self.source_bucket)
+    def download_file(self, gcs_path: str, local_path: str, bucket_name: str) -> str:
+        bucket = self.client.bucket(bucket_name)
         blob = bucket.blob(gcs_path)
         blob.download_to_filename(local_path)
         return local_path
     
-    def upload_page_image(self, local_image_path: str, gcs_path: str) -> str:
-        bucket = self.client.bucket(self.target_bucket)
+    def upload_file(self, local_image_path: str, gcs_path: str, bucket_name: str) -> str:
+        bucket = self.client.bucket(bucket_name)
         blob = bucket.blob(gcs_path)
         blob.upload_from_filename(local_image_path)
-        return f"gs://{self.target_bucket}/{gcs_path}"
+        return gcs_path
     
     def make_output_path(self, src_gcs_path: str, page_num: int) -> str:
         parts = src_gcs_path.rsplit("/", 1)

@@ -11,7 +11,7 @@ from google import genai
 from google.genai import types
 
 from config import PROJECT_ID, LOCATION
-from prompts import EXTRACT_TEXT_PROMPT, EXTRACT_SUMMARY_PROMPT_1, EXTRACT_SUMMARY_PROMPT_2, EXTRACT_SUMMARY_PROMPT_3
+from processor.prompts import EXTRACT_TEXT_PROMPT, EXTRACT_SUMMARY_PROMPT_1, EXTRACT_SUMMARY_PROMPT_2, EXTRACT_SUMMARY_PROMPT_3
 
 
 # Vertex AI용 클라이언트 설정
@@ -73,7 +73,7 @@ def extract_text(image_path: str) -> Tuple[Optional[str], Optional[str]]:
         return None, f"텍스트 추출 오류: {e}"
 
 
-def extract_summary(image_paths: List[str], file_name: str) -> Tuple[Optional[str], Optional[str]]:
+def extract_summary(target_image_path: str, context_image_paths: List[str]) -> Tuple[Optional[str], Optional[str]]:
     """
     Gemini를 이용해 이미지 내용 요약/설명 추출
     """
@@ -104,25 +104,23 @@ def extract_summary(image_paths: List[str], file_name: str) -> Tuple[Optional[st
         parts = []
 
         prompt_1 = EXTRACT_SUMMARY_PROMPT_1.format(
-            file_name=file_name,
-            description=get_description(file_name)
+            file_name=target_image_path,
+            description=get_description(target_image_path)
         ).strip()
-        parts.append(types.Part.from_text(prompt_1))
+        parts.append(types.Part.from_text(text=prompt_1))
 
-        context_paths = image_paths[:min(5, len(image_paths))]
-        for img_path in context_paths:
+        for img_path in context_image_paths:
             image_bytes = load_image_as_bytes(img_path)
             parts.append(types.Part.from_bytes(data=image_bytes, mime_type="image/png"))
 
         prompt_2 = EXTRACT_SUMMARY_PROMPT_2.strip()
-        parts.append(types.Part.from_text(prompt_2))
+        parts.append(types.Part.from_text(text=prompt_2))
 
-        target_path = image_paths[-1]
-        image_bytes = load_image_as_bytes(target_path )
+        image_bytes = load_image_as_bytes(target_image_path)
         parts.append(types.Part.from_bytes(data=image_bytes, mime_type="image/png"))
         
         prompt_3 = EXTRACT_SUMMARY_PROMPT_3.strip()
-        parts.append(types.Part.from_text(prompt_3))
+        parts.append(types.Part.from_text(text=prompt_3))
 
         contents = [
             types.Content(
@@ -161,5 +159,3 @@ if __name__ == "__main__":
     image_path = "sample.png"
     res = extract_text(image_path=image_path)
     print(res)
-
-

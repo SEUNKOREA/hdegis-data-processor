@@ -1,10 +1,22 @@
+import os
+import sys
+# 프로젝트 폴더를 루트로 가정
+PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(PROJECT_PATH)
+
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import or_, select
 from datetime import datetime
 
 from db.models import PDFDocument, PDFPage, PageStatus
 
+import tempfile
+import os
+from storage.gcs_client import GCSStorageClient
+from utils.utils import get_file_hash
+from config import GCS_SOURCE_BUCKET, GCS_PROCESSED_BUCKET
 
 class Repository:
     def __init__(self, session: Session) -> None:
@@ -25,31 +37,38 @@ class Repository:
         """
         return self.session.query(PDFDocument).filter_by(gcs_path=gcs_path).first() is not None
 
-    def create_document(self, gcs_path: str) -> PDFDocument:
+    def create_document(self, gcs_path: str, storage_client: GCSStorageClient) -> PDFDocument:
         """
         새로운 문서를 DB에 등록
         """
-        document = PDFDocument(gcs_path=gcs_path)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            local_pdf = os.path.join(tmpdir, "doc.pdf")
+            storage_client.download_file(gcs_path, local_pdf, storage_client.source_bucket)
+
+            doc_id = get_file_hash(local_pdf)
+
+        document = PDFDocument(doc_id=doc_id, gcs_path=gcs_path)
         self.session.add(document)
         self.session.commit()
         return document
 
     def get_pending_documents(self) -> List[PDFDocument]:
         """
-        아직 처리되지 않은 문서(processed=0) 목록 반환
+        processed=0 문서 목록 반환 (split 아직 안 했거나 split 실패한 문서)
         """
         return self.session.query(PDFDocument).filter_by(processed=0).all()
 
-    def mark_document_processed(self, gcs_path: str) -> None:
+    def mark_document_split(self, document_id: int, success: bool) -> None:
         """
-        문서 처리 완료 표시
-        processed = 1로 바꾸고, 시간도 기록
+        split_pdf_to_images 단계 결과에 따라 processed와 processed_at 업데이트
         """
-        doc = self.session.query(PDFDocument).filter_by(gcs_path=gcs_path).first()
-        if doc:
-            doc.processed = 1
-            doc.processed_at = datetime.utcnow()
-            self.session.commit()
+        doc = self.session.query(PDFDocument).get(document_id)
+        if not doc:
+            return
+        doc.processed = 1 if success else 0
+        doc.processed_at = datetime.utcnow()
+        self.session.commit()
+
 
     # ────────────────────────────────
     # 페이지 관련 (PDFPage)
@@ -57,19 +76,22 @@ class Repository:
 
     def create_page_record(
         self,
-        document_id: int,
+        doc_id: int,
         page_number: int,
-        gcs_path: str
+        gcs_path: str,
+        gcs_pdf_path: str,
     ) -> PDFPage:
         """
         새 페이지 레코드 생성 (처리 전)
         """
         page = PDFPage(
-            document_id=document_id,
+            page_id=f"{doc_id}{page_number}",
+            doc_id=doc_id,
             page_number=page_number,
             gcs_path=gcs_path,
+            gcs_pdf_path=gcs_pdf_path,
             extracted_text=None,
-            description=None,
+            summary=None,
             status=PageStatus.PENDING,
             error_message=None
         )
@@ -82,7 +104,7 @@ class Repository:
         page_id: int,
         *,
         extracted_text: Optional[str] = None,
-        description: Optional[str] = None,
+        summary: Optional[str] = None,
         status: Optional[PageStatus] = None,
         error_message: Optional[str] = None
     ) -> None:
@@ -92,20 +114,42 @@ class Repository:
         page = self.session.query(PDFPage).get(page_id)
         if not page:
             return
-
         if extracted_text is not None:
             page.extracted_text = extracted_text
-        if description is not None:
-            page.description = description
+        if summary is not None:
+            page.summary = summary
         if status is not None:
             page.status = status
         if error_message is not None:
             page.error_message = error_message
-
         self.session.commit()
+
+    # def get_failed_pages(self) -> List[PDFPage]:
+    #     """
+    #     처리 실패한(status=FAILED 인) 페이지 목록 가져오기 (재처리용)
+    #     """
+    #     return self.session.query(PDFPage).filter_by(status=PageStatus.FAILED).all()
 
     def get_failed_pages(self) -> List[PDFPage]:
         """
-        처리 실패한 페이지 목록 가져오기 (재처리용)
+        처리 실패한(status=FAILED) 또는 미처리(status=PENDING) 페이지 목록 가져오기 (재처리용)
         """
-        return self.session.query(PDFPage).filter_by(status=PageStatus.FAILED).all()
+        return (
+            self.session.query(PDFPage)
+            .filter(or_(
+                PDFPage.status == PageStatus.FAILED,
+                PDFPage.status == PageStatus.PENDING
+            ))
+            .all()
+        )
+    
+    def get_first_n_pages(self, document_id: str, n: int = 5) -> List[str]:
+        stmt = (
+            select(PDFPage.gcs_path)
+            .where(PDFPage.doc_id == document_id)
+            .order_by(PDFPage.page_number.asc())
+            .limit(n)
+        )
+        return self.session.scalars(stmt).all()
+# if __name__ == "__main__":
+    

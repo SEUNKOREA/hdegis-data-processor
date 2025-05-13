@@ -8,7 +8,7 @@ import tempfile
 from typing import List, Optional
 
 from storage.gcs_client import GCSStorageClient
-from processor.splitter import split_pdf_to_images
+from processor.splitter import split_pdf_to_images_and_upload
 from processor.extractor import extract_text, extract_summary
 from db.repository import Repository
 from db.models import PDFDocument, PageStatus
@@ -23,76 +23,96 @@ class PDFManager:
         self.storage = storage_client
         self.repo = repository
 
-    def process(self, gcs_pdf_path: str) -> None:
+    def process(self, gcs_pdf_path: str, doc_index: int = 0, total_docs: int = 0) -> None:
+        # 1) DB에서 문서 레코드 조회
+        doc: Optional[PDFDocument] = (
+            self.repo.session.query(PDFDocument)
+            .filter_by(gcs_path=gcs_pdf_path)
+            .first()
+        )
+        if not doc:
+            print(f"[{doc_index}/{total_docs}] 문서 정보를 DB에서 찾을 수 없습니다: {gcs_pdf_path}")
+            return
+
+
+        # 2) PDF 다운로드 → 이미지 → GCS 업로드
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                local_pdf = os.path.join(tmpdir, "document.pdf")
+                self.storage.download_file(gcs_pdf_path, local_pdf, self.storage.source_bucket)
+
+                gcs_image_paths = split_pdf_to_images_and_upload(
+                    local_pdf_path=local_pdf,
+                    gcs_pdf_path=gcs_pdf_path,
+                    output_folder=tmpdir,
+                    storage_client=self.storage
+                )
+
+                page_ids = []
+                for idx, gcs_image_path in enumerate(gcs_image_paths, start=1):
+                    page_rec = self.repo.create_page_record(
+                        doc_id=doc.doc_id,
+                        page_number=idx,
+                        gcs_path=gcs_image_path,
+                        gcs_pdf_path=gcs_pdf_path,
+                    )
+                    page_ids.append((page_rec.page_id, gcs_image_path))
+
+            # 업로드 성공 → 문서 상태 업데이트
+            self.repo.mark_document_split(doc.doc_id, success=True)
+            print(f"[{doc_index}/{total_docs}] split + GCS 업로드 + Page DB 등록 성공: {gcs_pdf_path}")
+
+        except Exception as e:
+            self.repo.mark_document_split(doc.doc_id, success=False)
+            print(f"[{doc_index}/{total_docs}] split, GCS 업로드 또는 Page DB 등록 실패: {e}")
+            return
+
+        # 3) 개별 페이지 처리에서 활용할 문서의 첫 5페이지 GCS 경로
+        context_paths = self.repo.get_first_n_pages(document_id=doc.doc_id, n=5)
+
+        # 4) 개별 페이지 처리
+        for idx, (page_id, gcs_image_path) in enumerate(page_ids, start=1):
+            text, text_err, summary, summary_err = self.process_page(gcs_image_path, context_paths)
+
+            success = text_err is None and summary_err is None
+            status = PageStatus.SUCCESS if success else PageStatus.FAILED
+            err_msg = text_err or summary_err
+
+            self.repo.update_page_record(
+                page_id=page_id,
+                extracted_text=text,
+                summary=summary,
+                status=status,
+                error_message=err_msg
+            )
+
+            if success:
+                print(f"    [page {idx}/{len(page_ids)}] (문서 {doc_index}/{total_docs}) 처리성공")
+            else:
+                print(f"    [page {idx}/{len(page_ids)}] (문서 {doc_index}/{total_docs}) 처리실패: {err_msg}")
+
+
+    def process_page(self, gcs_image_path: str, context_paths: List[str]) -> tuple[str, str | None, str, str | None]:
         """
-        주어진 GCS 경로의 PDF 파일을 처리:
-        1. 다운로드
-        2. 이미지 분리
-        3. OCR + Description
-        4. GCS 이미지 업로드
-        5. DB에 결과 저장
+        GCS에 저장된 이미지 경로를 이용해 OCR 및 설명 추출 후 DB 업데이트
         """
         with tempfile.TemporaryDirectory() as tmpdir:
-            local_pdf_path = f"{tmpdir}/source.pdf"
+            # 1. 현재 페이지 다운로드
+            local_image_path = os.path.join(tmpdir, os.path.basename(gcs_image_path))
+            self.storage.download_file(gcs_image_path, local_image_path, self.storage.target_bucket)
 
-            # 1. GCS에서 PDF 다운로드
-            self.storage.download_pdf(gcs_pdf_path, local_pdf_path)
+            # 2. Context 이미지들 다운로드
+            context_local_paths = []
+            for gcs_path in context_paths:
+                local_path = os.path.join(tmpdir, os.path.basename(gcs_path))
+                self.storage.download_file(gcs_path, local_path, self.storage.target_bucket)
+                context_local_paths.append(local_path)
 
-            # 2. 이미지 분리 (pdf2image 사용)
-            image_paths: List[str] = split_pdf_to_images(local_pdf_path, tmpdir)
+            # 3. OCR & 요약 추출
+            text, text_err = extract_text(local_image_path)
+            summ, summ_err = extract_summary(local_image_path, context_local_paths)
 
-            # 3. PDFDocument 레코드 조회
-            document: Optional[PDFDocument] = (
-                self.repo.session.query(PDFDocument)
-                .filter_by(gcs_path=gcs_pdf_path)
-                .first()
-            )
-            if not document:
-                raise ValueError(f"문서를 DB에서 찾을 수 없습니다: {gcs_pdf_path}")
-            document_id = document.id
-
-            # 4. 페이지별 처리
-            for idx, local_img_path in enumerate(image_paths, start=1):
-                try:
-                    # 4-1. 이미지 GCS에 업로드
-                    out_gcs_path = self.storage.make_output_path(gcs_pdf_path, idx)
-                    uploaded_gcs_path = self.storage.upload_page_image(local_img_path, out_gcs_path)
-
-                    # 4-2. 페이지 DB 레코드 생성 (초기 상태: PENDING)
-                    page = self.repo.create_page_record(
-                        document_id=document_id,
-                        page_number=idx,
-                        gcs_path=uploaded_gcs_path
-                    )
-
-                    # 4-3. OCR + 설명 생성 (Gemini API 사용)
-                    extracted_text, ocr_err = extract_text(local_img_path)
-                    summ_input_paths = image_paths[:min(5, len(image_paths))] + [local_img_path]
-                    summary, summ_err = extract_summary(
-                        image_paths=summ_input_paths,
-                        file_name=gcs_pdf_path,
-                    )
-
-                    # 4-4. 상태 결정
-                    is_success = ocr_err is None and summ_err is None
-                    status = PageStatus.SUCCESS if is_success else PageStatus.FAILED
-                    error_msg = "\n".join(filter(None, [ocr_err, summ_err])) or None
-
-                    # 4-5. 페이지 레코드 업데이트
-                    self.repo.update_page_record(
-                        page_id=page.id,
-                        extracted_text=extracted_text,
-                        summary=summary,
-                        status=status,
-                        error_message=error_msg
-                    )
-
-                except Exception as e:
-                    print(f"페이지 {idx} 처리 중 오류: {e}")
-
-            # 5. 문서 처리 완료로 마크
-            self.repo.mark_document_processed(gcs_pdf_path)
-
+            return text or "", text_err, summ or "", summ_err
 
 if __name__ == "__main__":
     pass

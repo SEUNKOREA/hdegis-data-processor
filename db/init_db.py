@@ -32,11 +32,11 @@ def init_tables():
 
     # 최소한의 기준 테이블 존재 여부 판단
     if "pdf_documents" not in existing_tables or "pdf_pages" not in existing_tables:
-        print("테이블이 존재하지 않아 생성합니다...")
+        print("    테이블이 존재하지 않아 생성합니다...")
         Base.metadata.create_all(bind=engine)
-        print("테이블 생성 완료!")
+        print("    테이블 생성 완료!")
     else:
-        print("모든 테이블 이미 존재함")
+        print("    모든 테이블 이미 존재함")
     
     # print_table_infos()
 

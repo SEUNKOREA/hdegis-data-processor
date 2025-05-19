@@ -21,7 +21,9 @@ def run_pipeline() -> None:
     - DB에 등록되지 않은 PDF 문서를 추가
     - 처리되지 않은 문서만 PDFManager를 통해 처리
     """
+    print("=== [INITIALIZE TABLE START] ===\n")
     init_tables()
+    print("=== [INITIALIZE TABLE DONE] ===\n")
 
     # 1. DB 세션 열기
     db_gen = get_db_session()
@@ -37,10 +39,10 @@ def run_pipeline() -> None:
         )
         manager = PDFManager(storage_client, repo)
 
-
+        print("\n=== [DOCS DETECTION START] ===\n")
         # 1. GCS에서 PDF 목록 수집
         pdf_paths = storage_client.list_pdfs(prefix="")  # 버킷 루트부터 검색
-        print(f"\n전체 GCS PDF: {len(pdf_paths)}개")
+        print(f"   전체 GCS PDF 문서: {len(pdf_paths)}건")
 
 
         # 2. 신규문서(DB에 없는 문서) 필터링 및 등록
@@ -49,14 +51,15 @@ def run_pipeline() -> None:
             print(f"신규 문서 발견: {len(new_pdf_paths)}건")
             for idx, path in enumerate(new_pdf_paths, 1):
                 repo.create_document(path, storage_client)    
-                print(f"---  [{idx}/{len(new_pdf_paths)}] 신규문서 등록 완료: {path}")
+                print(f"---  [{idx}/{len(new_pdf_paths)}] 신규문서 DB 등록 완료: {path}")
         else:
             print("신규 문서 없음")
-        
+        print("=== [DOCS DETECTION DONE] ===\n")
+
 
         # 3. 처리되지 않은(processed=0) 문서 처리
         pending_docs = repo.get_pending_documents()
-        print(f"\n처리되지 않은 문서: {len(pending_docs)}건")
+        print(f"\n처리되지 않은 (processed=0) 문서: {len(pending_docs)}건")
         total_docs = len(pending_docs)
         for doc_idx, doc in enumerate(pending_docs, start=1):
             try:

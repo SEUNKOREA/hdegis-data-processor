@@ -1,5 +1,12 @@
 import os
+import sys
 import hashlib
+
+PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(PROJECT_PATH)
+
+from storage.gcs_client import GCSStorageClient
+
 
 def get_file_hash(file_path, hash_type='sha256'):
     # 사용할 해시 알고리즘 선택
@@ -13,6 +20,20 @@ def get_file_hash(file_path, hash_type='sha256'):
     return hash_func.hexdigest()
 
 
+def compute_doc_hash(storage_client: GCSStorageClient, gcs_pdf_path: str) -> str:
+    """Download a PDF to a tmp file and return its sha-256 hash."""
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+        storage_client.download_file(gcs_pdf_path, tmp.name, storage_client.source_bucket)
+        return get_file_hash(tmp.name)
+
+
+
+
+
+
+
+# --- Git Utils
 import os
 from pathspec import PathSpec
 from pathspec.patterns import GitWildMatchPattern

@@ -15,3 +15,5 @@ MYSQL_USER: str = os.getenv("MYSQL_USER")
 MYSQL_PWD: str = os.getenv("MYSQL_PWD")
 MYSQL_CHARSET: str = os.getenv("MYSQL_CHARSET")
 MYSQL_DB: str = os.getenv("MYSQL_DB")
+
+LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

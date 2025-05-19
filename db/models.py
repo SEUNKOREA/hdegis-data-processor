@@ -33,7 +33,7 @@ class PDFPage(Base):
 
     page_id: int = Column(String(128), primary_key=True)
     doc_id: int = Column(String(128), ForeignKey("pdf_documents.doc_id"), nullable=False)
-    page_number: int = Column(Integer, nullable=False)
+    page_number: str = Column(String(32), nullable=False)
     gcs_path: str = Column(String(1000), nullable=False)
     gcs_pdf_path: str = Column(String(1000), nullable=False)
     extracted_text: str = Column(LONGTEXT, nullable=True)

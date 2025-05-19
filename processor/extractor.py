@@ -1,18 +1,16 @@
 import os
 import sys
-# 프로젝트 폴더를 루트로 가정
-PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
-sys.path.append(PROJECT_PATH)
-
 from typing import Tuple, Optional, List
-import base64
-import pathlib
+
 from google import genai
 from google.genai import types
 
+PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(PROJECT_PATH)
+
 from config import PROJECT_ID, LOCATION
 from processor.prompts import EXTRACT_TEXT_PROMPT, EXTRACT_SUMMARY_PROMPT_1, EXTRACT_SUMMARY_PROMPT_2, EXTRACT_SUMMARY_PROMPT_3
-
+from storage.gcs_client import GCSStorageClient
 
 # Vertex AI용 클라이언트 설정
 client = genai.Client(

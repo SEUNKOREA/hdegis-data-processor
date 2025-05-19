@@ -1,8 +1,10 @@
 import os
 import sys
-# 프로젝트 폴더를 루트로 가정
+from typing import List, Tuple
+
 PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
 sys.path.append(PROJECT_PATH)
+
 from google.cloud import storage
 
 from storage.gcs_client import GCSStorageClient
@@ -10,8 +12,16 @@ from processor.pdf_manager import PDFManager
 from db.init_db import init_tables
 from db.session import get_db_session
 from db.repository import Repository
-from db.models import PDFDocument, PageStatus
-from config import GCS_SOURCE_BUCKET, GCS_PROCESSED_BUCKET
+from db.models import PageStatus
+from config import (
+    GCS_SOURCE_BUCKET, 
+    GCS_PROCESSED_BUCKET,
+    LOG_LEVEL,
+)
+from utils.utils import compute_doc_hash
+from utils.logger import get_logger
+
+logger = get_logger(__name__, LOG_LEVEL)
 
 
 def run_pipeline() -> None:
@@ -21,13 +31,14 @@ def run_pipeline() -> None:
     - DB에 등록되지 않은 PDF 문서를 추가
     - 처리되지 않은 문서만 PDFManager를 통해 처리
     """
-    print("=== [INITIALIZE TABLE START] ===\n")
+    logger.info("[START] INITIALIZE TABLE")
     init_tables()
-    print("=== [INITIALIZE TABLE DONE] ===\n")
+    logger.info("[DONE] INITIALIZE TABLE")
 
-    # 1. DB 세션 열기
+    # DB 세션 열기
     db_gen = get_db_session()
     session = next(db_gen)
+    
     try:
         # Repository, GCS 클라이언트, PDFManager 초기화
         repo = Repository(session)
@@ -39,74 +50,89 @@ def run_pipeline() -> None:
         )
         manager = PDFManager(storage_client, repo)
 
-        print("\n=== [DOCS DETECTION START] ===\n")
-        # 1. GCS에서 PDF 목록 수집
-        pdf_paths = storage_client.list_pdfs(prefix="")  # 버킷 루트부터 검색
-        print(f"   전체 GCS PDF 문서: {len(pdf_paths)}건")
 
+        # ---------------- 1. 신규 문서 탐지 및 처리 ----------------
+        logger.info("[START] DETECT NEW DOCUMENTS ...")
+        pdf_paths = storage_client.list_pdfs(prefix="")
+        logger.info("총 GCS PDF: %d", len(pdf_paths))
 
-        # 2. 신규문서(DB에 없는 문서) 필터링 및 등록
-        new_pdf_paths = [p for p in pdf_paths if not repo.document_exists(p)]
-        if new_pdf_paths:
-            print(f"신규 문서 발견: {len(new_pdf_paths)}건")
-            for idx, path in enumerate(new_pdf_paths, 1):
-                repo.create_document(path, storage_client)    
-                print(f"---  [{idx}/{len(new_pdf_paths)}] 신규문서 DB 등록 완료: {path}")
-        else:
-            print("신규 문서 없음")
-        print("=== [DOCS DETECTION DONE] ===\n")
-
-
-        # 3. 처리되지 않은(processed=0) 문서 처리
-        pending_docs = repo.get_pending_documents()
-        print(f"\n처리되지 않은 (processed=0) 문서: {len(pending_docs)}건")
-        total_docs = len(pending_docs)
-        for doc_idx, doc in enumerate(pending_docs, start=1):
+        known_hashes = repo.list_all_document_hashes()
+        new_docs: List[Tuple[str, str]] = []  # (hash, path)
+        for p in pdf_paths:
             try:
-                manager.process(doc.gcs_path, doc_index=doc_idx, total_docs=total_docs)
-                print(f"[{doc_idx}/{total_docs}] 문서 처리 성공: {doc.gcs_path}")
+                h = compute_doc_hash(storage_client, p)
             except Exception as e:
-                print(f"[{doc_idx}/{total_docs}] 문서 처리 실패: {doc.gcs_path} - 에러: {e}")
+                logger.error("해시 계산 실패 (skip) (%s): %s", p, e)
+                continue
+            if h not in known_hashes:
+                new_docs.append((h, p))
+
+        if new_docs:
+            logger.info("신규 문서: %d건", len(new_docs))
+        else:
+            logger.info("신규 문서 없음")
+        logger.info("[DONE] DETECT NEW DOCUMENTS")
+
+        logger.info("[START] PROCESS NEW DOCUMENTS ...")
+        for i, (h, p) in enumerate(new_docs, start=1):
+            repo.create_document(h, p, storage_client)           
+            manager.process_document(doc_id=h, gcs_pdf_path=p, tag="NEW", index=i, total=len(new_docs))
+        logger.info("[DONE] PROCESS NEW DOCUMENTS")
 
 
-        # 4. 실패한 페이지 처리
+        # ---------------- 2. Document-level 재시도 ----------------
+        logger.info("[START] PROCESS FAILED DOCUMENTS ...")
+        failed_docs = repo.get_failed_documents()
+        if failed_docs:
+            logger.info("실패 문서: %d건", len(failed_docs))
+        else:
+            logger.info("실패 문서 없음")
+
+        for i, f_doc in enumerate(failed_docs, start=1):
+            manager.process_document(doc_id=f_doc.doc_id, gcs_pdf_path=f_doc.gcs_path, tag="RETRY", index=i, total=len(failed_docs))
+        logger.info("[DONE] PROCESS FAILED DOCUMENTS")
+
+        # ---------------- 3. Page-level 재시도 ----------------
+        logger.info("[START] PROCESS FAILED PAGES ...")
         failed_pages = repo.get_failed_pages()
-        print(f"\n실패한 페이지: {len(failed_pages)}건")
-        
-        for idx, page in enumerate(failed_pages, 1):
+        if failed_pages:
+            logger.info("실패 페이지: %d건", len(failed_pages))
+        else:
+            logger.info("실패 페이지 없음")
+
+        for i, f_page in enumerate(failed_pages, start=1):
             try:
-                # 1. context 이미지 경로
-                context_paths = repo.get_first_n_pages(document_id=page.doc_id, n=5)
-                
-                # 2. OCR 및 요약 추출
-                text, text_err, summary, summary_err = manager.process_page(gcs_image_path=page.gcs_path, context_paths=context_paths)
-                
-                # 3. 상태 판단 및 DB 업데이트
-                success = text_err is None and summary_err is None
-                status = PageStatus.SUCCESS if success else PageStatus.FAILED
-                error_msg = text_err or summary_err
+                doc_id = f_page.doc_id
+                gcs_context_paths = repo.get_first_n_pages(doc_id, 5)
+
+                text, t_err, summ, s_err = manager.process_page(f_page.gcs_path, gcs_context_paths)
+
+                succ   = (t_err is None and s_err is None)
+                status = PageStatus.SUCCESS if succ else PageStatus.FAILED
 
                 repo.update_page_record(
-                    page_id=page.page_id,
-                    extracted_text=text,
-                    summary=summary,
+                    page_id=f_page.page_id,
+                    extracted_text=text or "",
+                    summary=summ or "",
                     status=status,
-                    error_message=error_msg
+                    error_message=t_err or s_err,
                 )
-    
-                # 4. 출력
-                if success:
-                    # print(f"[{idx}/{len(failed_pages)}] 재처리 성공: {page.document.gcs_path}")
-                    print(f"[{idx}/{len(failed_pages)}] 재처리 성공: {page.gcs_path}")
-                else:
-                    # print(f"[{idx}/{len(failed_pages)}] 재처리 실패: {page.document.gcs_path} - 오류: {error_msg}")
-                    print(f"[{idx}/{len(failed_pages)}] 재처리 실패: {page.gcs_path} - 오류: {error_msg}")
 
+                log_fn = logger.debug if succ else logger.warning
+                log_fn("└── [%s] [%d/%d] page %s - %s - %s",
+                        "RETRY", i, len(failed_pages),
+                        "OK" if succ else "FAIL",
+                        f_page.gcs_path,
+                        "" if succ else (t_err or s_err))
+            
             except Exception as e:
-                print(f"[{idx}/{len(failed_pages)}] 재처리 실패: {page.document.gcs_path} - 예외발생: {e}")
+                logger.error("└── [%s] [%d/%d] page EXCEPT - %s - %s",
+                                  "RETRY", i, len(failed_pages), f_page.gcs_path, e)
+        logger.info("[DONE] PROCESS FAILED PAGES ...")
 
     finally:
         session.close()
+
 
 if __name__ == "__main__":
     run_pipeline()

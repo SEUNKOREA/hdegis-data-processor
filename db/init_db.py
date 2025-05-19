@@ -2,12 +2,16 @@ import os
 import sys
 from sqlalchemy import inspect
 
-# 프로젝트 폴더를 루트로 가정
 PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
 sys.path.append(PROJECT_PATH)
 
 from db.models import Base
 from db.session import engine
+from utils.logger import get_logger
+from config import LOG_LEVEL
+
+logger = get_logger(__name__, LOG_LEVEL)
+
 
 def print_table_infos():
     inspector = inspect(engine)
@@ -32,11 +36,11 @@ def init_tables():
 
     # 최소한의 기준 테이블 존재 여부 판단
     if "pdf_documents" not in existing_tables or "pdf_pages" not in existing_tables:
-        print("    테이블이 존재하지 않아 생성합니다...")
+        logger.info("┌── DB 테이블 없음 → 생성 시도")
         Base.metadata.create_all(bind=engine)
-        print("    테이블 생성 완료!")
+        logger.info("└── DB 테이블 생성 완료!")
     else:
-        print("    모든 테이블 이미 존재함")
+        logger.info("└── 모든 테이블 이미 존재함")
     
     # print_table_infos()
 

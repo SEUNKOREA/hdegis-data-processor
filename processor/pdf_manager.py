@@ -3,6 +3,9 @@ import sys
 import tempfile
 from typing import List, Optional, Tuple
 
+from google import genai
+from google.genai import types
+
 PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
 sys.path.append(PROJECT_PATH)
 
@@ -17,11 +20,14 @@ from config import LOG_LEVEL
 
 
 class PDFManager:
-    def __init__(self, storage_client: GCSStorageClient, repository: Repository) -> None:
+    def __init__(self, 
+                 storage_client: GCSStorageClient, 
+                 repository: Repository, 
+                 genai_client: genai.Client) -> None:
         self.storage = storage_client
         self.repo = repository
+        self.gemini = genai_client
         self.logger = get_logger(self.__class__.__name__, LOG_LEVEL)
-
 
     # ── 문서 처리 ───────────────────────────
     def process_document(self, doc_id: str, gcs_pdf_path: str, *, 
@@ -49,10 +55,10 @@ class PDFManager:
                     page_pairs.append((page.page_id, gcs_image_path))
 
             self.repo.mark_document_split(doc.doc_id, True)
-            self.logger.info("[%s] [%d/%d] split OK - %s", tag, index, total, gcs_pdf_path)
+            self.logger.info("[%s] [%d/%d] split SUCCESS - %s", tag, index, total, gcs_pdf_path)
 
         except Exception as e:
-            self.logger.warning("[%s] [%d/%d] split FAIL - %s - %s", tag, index, total, gcs_pdf_path, e)
+            self.logger.warning("[%s] [%d/%d] split FAILURE - %s - %s", tag, index, total, gcs_pdf_path, e)
             return
         
         # 2. OCR + Summary
@@ -62,20 +68,20 @@ class PDFManager:
                 text, t_err, summ, s_err = self.process_page(gcs_image_path, gcs_context_paths)
 
                 succ   = (t_err is None and s_err is None)
-                status = PageStatus.SUCCESS if succ else PageStatus.FAILED
+                extracted_status = PageStatus.SUCCESS if succ else PageStatus.FAILED
 
                 self.repo.update_page_record(
                     page_id,
                     extracted_text=text or "",
                     summary=summ or "",
-                    status=status,
+                    extracted=extracted_status,
                     error_message=t_err or s_err,
                 )
 
                 log_fn = self.logger.debug if succ else self.logger.warning
                 log_fn("└── [%s] [%d/%d] page %s %d/%d - %s - %s",
                        tag, index, total,
-                       "OK" if succ else "FAIL",
+                       "SUCCESS" if succ else "FAILURE",
                        pi, len(page_pairs), gcs_image_path,
                        "" if succ else (t_err or s_err))
 
@@ -98,7 +104,7 @@ class PDFManager:
                 local_context_paths.append(local_ctx_path)
 
             # 2. 추출
-            text, t_err = extract_text(local_image_path)
-            summ, s_err = extract_summary(local_image_path, local_context_paths)
+            text, t_err = extract_text(local_image_path, self.gemini)
+            summ, s_err = extract_summary(local_image_path, local_context_paths, self.gemini)
         
         return text or "", t_err, summ or "", s_err

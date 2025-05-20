@@ -4,10 +4,18 @@ import os
 load_dotenv()
 
 GOOGLE_APPLICATION_CREDENTIALS: str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+PROJECT_ID: str = os.getenv("PROJECT_ID")
+
 GCS_SOURCE_BUCKET: str = os.getenv("GCS_SOURCE_BUCKET")
 GCS_PROCESSED_BUCKET: str = os.getenv("GCS_PROCESSED_BUCKET")
-PROJECT_ID: str = os.getenv("PROJECT_ID")
-LOCATION: str = os.getenv("LOCATION")
+
+GENAI_LOCATION: str = os.getenv("GENAI_LOCATION")
+
+EXTRACT_TEXT_MODEL: str = os.getenv("EXTRACT_TEXT_MODEL")
+EXTRACT_SUMMARY_MODEL: str = os.getenv("EXTRACT_SUMMARY_MODEL")
+EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL")
+
+
 
 MYSQL_HOST: str = os.getenv("MYSQL_HOST")
 MYSQL_PORT: int = int(os.getenv("MYSQL_PORT"))

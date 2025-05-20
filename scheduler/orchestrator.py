@@ -6,6 +6,8 @@ PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
 sys.path.append(PROJECT_PATH)
 
 from google.cloud import storage
+from google import genai
+from google.genai import types
 
 from storage.gcs_client import GCSStorageClient
 from processor.pdf_manager import PDFManager
@@ -16,6 +18,8 @@ from db.models import PageStatus
 from config import (
     GCS_SOURCE_BUCKET, 
     GCS_PROCESSED_BUCKET,
+    PROJECT_ID, 
+    GENAI_LOCATION, 
     LOG_LEVEL,
 )
 from utils.utils import compute_doc_hash
@@ -48,7 +52,12 @@ def run_pipeline() -> None:
             target_bucket=GCS_PROCESSED_BUCKET,
             client=gcs_client
         )
-        manager = PDFManager(storage_client, repo)
+        genai_client = genai.Client(
+            vertexai=True,
+            project=PROJECT_ID,
+            location=GENAI_LOCATION,
+        )
+        manager = PDFManager(storage_client, repo, genai_client)
 
 
         # ---------------- 1. 신규 문서 탐지 및 처리 ----------------
@@ -108,13 +117,13 @@ def run_pipeline() -> None:
                 text, t_err, summ, s_err = manager.process_page(f_page.gcs_path, gcs_context_paths)
 
                 succ   = (t_err is None and s_err is None)
-                status = PageStatus.SUCCESS if succ else PageStatus.FAILED
+                extracted_status = PageStatus.SUCCESS if succ else PageStatus.FAILED
 
                 repo.update_page_record(
                     page_id=f_page.page_id,
                     extracted_text=text or "",
                     summary=summ or "",
-                    status=status,
+                    extracted=extracted_status,
                     error_message=t_err or s_err,
                 )
 

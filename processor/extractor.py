@@ -8,26 +8,15 @@ from google.genai import types
 PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
 sys.path.append(PROJECT_PATH)
 
-from config import PROJECT_ID, LOCATION
 from processor.prompts import EXTRACT_TEXT_PROMPT, EXTRACT_SUMMARY_PROMPT_1, EXTRACT_SUMMARY_PROMPT_2, EXTRACT_SUMMARY_PROMPT_3
-from storage.gcs_client import GCSStorageClient
-
-# Vertex AI용 클라이언트 설정
-client = genai.Client(
-    vertexai=True,
-    project=PROJECT_ID, 
-    location=LOCATION
-)
-
-model_name = "gemini-2.0-flash-001"
-
+from config import EXTRACT_TEXT_MODEL, EXTRACT_SUMMARY_MODEL
 
 def load_image_as_bytes(image_path: str) -> bytes:
     with open(image_path, "rb") as f:
         return f.read()
 
 
-def extract_text(image_path: str) -> Tuple[Optional[str], Optional[str]]:
+def extract_text(image_path: str, client: genai.Client) -> Tuple[Optional[str], Optional[str]]:
     """
     Gemini를 이용해 이미지에서 Markdown 기반 텍스트 추출
     """
@@ -60,7 +49,7 @@ def extract_text(image_path: str) -> Tuple[Optional[str], Optional[str]]:
         )
 
         result = client.models.generate_content(
-            model=model_name,
+            model=EXTRACT_TEXT_MODEL,
             contents=contents,
             config=config
         )
@@ -71,7 +60,7 @@ def extract_text(image_path: str) -> Tuple[Optional[str], Optional[str]]:
         return None, f"텍스트 추출 오류: {e}"
 
 
-def extract_summary(target_image_path: str, context_image_paths: List[str]) -> Tuple[Optional[str], Optional[str]]:
+def extract_summary(target_image_path: str, context_image_paths: List[str], client: genai.Client) -> Tuple[Optional[str], Optional[str]]:
     """
     Gemini를 이용해 이미지 내용 요약/설명 추출
     """
@@ -141,7 +130,7 @@ def extract_summary(target_image_path: str, context_image_paths: List[str]) -> T
         )
 
         result = client.models.generate_content(
-            model=model_name,
+            model=EXTRACT_SUMMARY_MODEL,
             contents=contents,
             config=config
         )

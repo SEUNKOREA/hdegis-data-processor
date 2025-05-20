@@ -1,26 +1,24 @@
 import os
 import sys
-# 프로젝트 폴더를 루트로 가정
-PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
-sys.path.append(PROJECT_PATH)
-
 from typing import List, Optional
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import or_, select
-from datetime import datetime
+
+PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(PROJECT_PATH)
 
 from db.models import PDFDocument, PDFPage, PageStatus
-
-import tempfile
-import os
 from storage.gcs_client import GCSStorageClient
-from utils.utils import get_file_hash
-from config import GCS_SOURCE_BUCKET, GCS_PROCESSED_BUCKET
+from utils.logger import get_logger
+from config import LOG_LEVEL
 
 class Repository:
     def __init__(self, session: Session) -> None:
         self.session = session
+        self.logger = get_logger(self.__class__.__name__, LOG_LEVEL)
 
     # ── 문서 관련 ─────────────────────────────────────────────
     def list_all_document_hashes(self) -> set[str]:
@@ -79,9 +77,8 @@ class Repository:
 
     def get_failed_pages(self) -> List[PDFPage]:
         """
-        처리 실패한(status=FAILED 인) 페이지 목록 가져오기 (재처리용)
+        처리 실패한(extracted=FAILED 인) 페이지 목록 가져오기 (재처리용)
         """
         return (self.session.query(PDFPage)
-                .filter_by(status=PageStatus.FAILED)
+                .filter_by(extracted=PageStatus.FAILED)
                 .all())
-

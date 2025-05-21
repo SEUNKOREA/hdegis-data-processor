@@ -19,12 +19,6 @@ class Repository:
         self.session = session
         self.logger = get_logger(self.__class__.__name__, LOG_LEVEL)
 
-    # def list_all_document_hashes(self) -> set[str]:
-    #     result = (
-    #         self.session.query(distinct(PDFPage.doc_id))
-    #         .all()
-    #     )
-    #     return {row[0] for row in result}
 
     def list_all_document_hashes(self) -> set[str]:
         result = (
@@ -32,6 +26,17 @@ class Repository:
             .all()
         )
         return {row[0] for row in result}
+
+
+    def exists_document(self, doc_id: str) -> bool:
+        return self.session.query(PDFDocument).filter_by(doc_id=doc_id).first() is not None
+
+
+    def create_document(self, doc_id: str, gcs_path: str) -> PDFDocument:
+        doc = PDFDocument(doc_id=doc_id, gcs_path=gcs_path)
+        self.session.add(doc)
+        self.session.commit()
+        return doc
 
 
     def create_page_record(self, doc_id: str, page_number:int, gcs_path: str, gcs_pdf_path: str) -> PDFPage:
@@ -46,12 +51,15 @@ class Repository:
         self.session.commit()
         return page
 
-    def get_pages_for_extraction(self) -> List[PDFPage]:
-        return (
-            self.session.query(PDFPage)
-            .filter(PDFPage.extracted.in_([PageStatus.PENDING, PageStatus.FAILED]))
-            .all()
-        )
+
+    def update_page_record(self, page_id: str, **kwargs):
+        page = self.session.get(PDFPage, page_id)
+        if page:
+            for k, v in kwargs.items():
+                if v is not None:
+                    setattr(page, k, v)
+            self.session.commit()
+
 
     def get_first_n_pages(self, doc_id: str, n: int = 5) -> List[str]:
         stmt = (
@@ -61,6 +69,15 @@ class Repository:
             .limit(n)
         )
         return self.session.scalars(stmt).all()
+
+
+    def get_pages_for_extraction(self) -> List[PDFPage]:
+        return (
+            self.session.query(PDFPage)
+            .filter(PDFPage.extracted.in_([PageStatus.PENDING, PageStatus.FAILED]))
+            .all()
+        )
+
 
     def get_pages_for_summary(self) -> List[PDFPage]:
         return (
@@ -79,20 +96,10 @@ class Repository:
         )
 
 
-    def update_page_record(self, page_id: str, **kwargs):
-        page = self.session.get(PDFPage, page_id)
-        if page:
-            for k, v in kwargs.items():
-                if v is not None:
-                    setattr(page, k, v)
-            self.session.commit()
-
-
-    def exists_document(self, doc_id: str) -> bool:
-        return self.session.query(PDFDocument).filter_by(doc_id=doc_id).first() is not None
-    
-    def create_document(self, doc_id: str, gcs_path: str) -> PDFDocument:
-        doc = PDFDocument(doc_id=doc_id, gcs_path=gcs_path)
-        self.session.add(doc)
-        self.session.commit()
-        return doc
+    def get_pages_for_indexing(self) -> List[PDFPage]:
+        return (
+            self.session.query(PDFPage)
+            .filter(PDFPage.embedded == PageStatus.SUCCESS)
+            .filter(PDFPage.indexed.in_([PageStatus.PENDING, PageStatus.FAILED]))
+            .all()
+        )

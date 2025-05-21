@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import tempfile
 from typing import List, Optional, Tuple, Dict
 
@@ -13,11 +14,12 @@ sys.path.append(PROJECT_PATH)
 from storage.gcs_client import GCSStorageClient
 from processor.extractor import extract_text, extract_summary
 from processor.embedder import get_text_embedding
+from processor.elastic import ESConnector
 from db.repository import Repository
 from db.models import PDFPage, PageStatus
 from utils.utils import split_file_path
 from utils.logger import get_logger
-from config import LOG_LEVEL
+from config import LOG_LEVEL, INDEX_NAME
 
 
 
@@ -25,10 +27,12 @@ class PDFManager:
     def __init__(self, 
                  storage_client: GCSStorageClient, 
                  repository: Repository, 
-                 genai_client: genai.Client) -> None:
+                 genai_client: genai.Client,
+                 els_client: ESConnector) -> None:
         self.storage = storage_client
         self.repo = repository
         self.genai = genai_client
+        self.els =  els_client
         self.logger = get_logger(self.__class__.__name__, LOG_LEVEL)
 
 
@@ -57,7 +61,7 @@ class PDFManager:
                 local_image_path = os.path.join(tmpdir, f"page-{i:05d}.png")
                 image.save(local_image_path, "PNG")
 
-                gcs_image_path = f"{gcs_image_dir}/{pdf_basename}-page-{i:05}png"
+                gcs_image_path = f"{gcs_image_dir}/{pdf_basename}-page-{i:05}.png"
                 uploaded_path = self.storage.upload_file(local_image_path, gcs_image_path, self.storage.target_bucket)
 
                 page_infos[i] = uploaded_path
@@ -135,3 +139,26 @@ class PDFManager:
             return embedding, None, PageStatus.SUCCESS
         except Exception as e:
             return None, f"임베딩 오류: {e}", PageStatus.FAILED
+    
+
+    def invoke_indexing(self, page: PDFPage) -> Tuple[str, str, PageStatus, Optional[str]]:
+        """
+        ELS에 페이지 인덱싱 수행
+        """
+        try:
+            data = {
+                "page_id": page.page_id,
+                "doc_id": page.doc_id,
+                "page_number": page.page_number,
+                "gcs_path": page.gcs_path,
+                "gcs_pdf_path": page.gcs_pdf_path,
+                "extracted_text": page.extracted_text,
+                "summary": page.summary,
+                "embedding": json.loads(page.embedding),
+            }
+
+            self.els.conn.index(index=INDEX_NAME, id=page.page_id, document=data)
+            return page.page_id, page.gcs_path, PageStatus.SUCCESS, None
+
+        except Exception as e:
+            return page.page_id, page.gcs_path, PageStatus.FAILED, f"Indexing Error: {e}"

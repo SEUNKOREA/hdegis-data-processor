@@ -1,5 +1,8 @@
+import os
+import sys
 import enum
 from datetime import datetime
+
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy import (
@@ -7,6 +10,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.sql import func
+
+PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(PROJECT_PATH)
+
+from config import TABLENAME_PDFPAGE, TABLENAME_PDFDOCUMENT
+
 
 # 모든 ORM 모델의 기본이 되는 클래스를 정의
 # 아래의 테이블 클래스들이 이 Base를 상속해서 만들어야 실제 테이블로 인식됨
@@ -18,7 +27,7 @@ class PageStatus(enum.Enum):
     FAILED = "FAILED"       # 처리 실패
 
 class PDFPage(Base):
-    __tablename__ = "pdf_pages"
+    __tablename__ = TABLENAME_PDFPAGE
 
     page_id: int = Column(String(128), primary_key=True)
     doc_id: str = Column(String(128), ForeignKey("pdf_documents.doc_id"), nullable=False)
@@ -44,7 +53,7 @@ class PDFPage(Base):
 
 
 class PDFDocument(Base):
-    __tablename__ = "pdf_documents"
+    __tablename__ = TABLENAME_PDFDOCUMENT
 
     doc_id: str = Column(String(128), primary_key=True)
     gcs_path: str = Column(String(1000), nullable=False)

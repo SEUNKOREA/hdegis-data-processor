@@ -15,13 +15,18 @@ from db.session import get_db_session
 from db.repository import Repository
 from storage.gcs_client import GCSStorageClient
 from processor.pdf_manager import PDFManager
+from processor.elastic import ESConnector
 from utils.logger import get_logger
 from utils.utils import compute_doc_hash
 from config import (
     GCS_SOURCE_BUCKET,
     GCS_PROCESSED_BUCKET,
     PROJECT_ID, 
-    GENAI_LOCATION, 
+    GENAI_LOCATION,
+    ES_HOST,
+    ES_USER,
+    ES_PWD,
+    INDEX_NAME,
     LOG_LEVEL
 )
 
@@ -42,8 +47,9 @@ def run_pipeline() -> None:
         storage_client = GCSStorageClient(GCS_SOURCE_BUCKET, GCS_PROCESSED_BUCKET, gcs_client)
         repo = Repository(session)
         genai_client = genai.Client(vertexai=True, project=PROJECT_ID, location=GENAI_LOCATION)
+        els = ESConnector(hosts=ES_HOST, credentials=(ES_USER, ES_PWD))
 
-        manager = PDFManager(storage_client, repo, genai_client)
+        manager = PDFManager(storage_client, repo, genai_client, els)
 
 
         # ─────────────────────────────────────────────────────────
@@ -184,6 +190,36 @@ def run_pipeline() -> None:
                 logger.error(" └── [%d/%d] Embedding exception (%s): %s - %s", i, len(embedding_pages), tag, page.gcs_path, e)
 
 
+
+        # ─────────────────────────────────────────────────────────
+        # 6. 인덱싱
+        # ─────────────────────────────────────────────────────────
+        logger.info("[Step 6] Indexing")
+        indexing_pages = repo.get_pages_for_indexing()
+        pending = [p for p in embedding_pages if p.indexed == PageStatus.PENDING]
+        retry   = [p for p in embedding_pages if p.indexed == PageStatus.FAILED]
+        logger.info("Pages queued for indexing: %d (new: %d, retry: %d)", len(embedding_pages), len(pending), len(retry))
+
+        for i, page in enumerate(indexing_pages, 1):
+            try:
+                tag = "new" if page.indexed == PageStatus.PENDING else "retry"
+                page_id, gcs_page_path, status, error = manager.invoke_indexing(page)
+
+                repo.update_page_record(
+                    page_id=page_id,
+                    indexed=status,
+                    error_message=error
+                )
+
+                if status == PageStatus.SUCCESS:
+                    logger.debug(" └── [%d/%d] Indexing succeeded (%s): %s", i, len(indexing_pages), tag, page.gcs_path)
+                else:
+                    logger.warning(" └── [%d/%d] Indexing failed (%s): %s - %s", i, len(indexing_pages), tag, page.gcs_path, error)
+
+            except Exception as e:
+                logger.error(" └── [%d/%d] Indexing exception (%s): %s - %s", i, len(indexing_pages), tag, page.gcs_path, e)
+
+
     finally:
         session.close()
-        logger.info("Pipeline execution finished")
+        logger.info("\nPipeline execution finished")

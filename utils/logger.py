@@ -2,7 +2,8 @@ import logging
 import sys
 from typing import Optional
 
-_FMT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+# _FMT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+_FMT = "%(asctime)s | %(levelname)-8s | %(message)s"
 
 
 def get_logger(name: str,

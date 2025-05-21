@@ -30,20 +30,20 @@ def print_table_infos():
                   f"{' DEFAULT ' + str(default) if default is not None else ''}")
     return tables
 
-def init_tables():
+def initialize_tables():
     inspector = inspect(engine)
     existing_tables = inspector.get_table_names()
 
     # 최소한의 기준 테이블 존재 여부 판단
     if "pdf_documents" not in existing_tables or "pdf_pages" not in existing_tables:
-        logger.info("┌── DB 테이블 없음 → 생성 시도")
+        logger.info(" ┌── There is no tables → Try to create tables")
         Base.metadata.create_all(bind=engine)
-        logger.info("└── DB 테이블 생성 완료!")
+        logger.info(" └── Created tables!")
     else:
-        logger.info("└── 모든 테이블 이미 존재함")
+        logger.info(" └── Already exists all tables")
     
     # print_table_infos()
 
 
 if __name__ == "__main__":
-    init_tables()
+   initialize_tables()

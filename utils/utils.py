@@ -27,8 +27,15 @@ def compute_doc_hash(storage_client: GCSStorageClient, gcs_pdf_path: str) -> str
         storage_client.download_file(gcs_pdf_path, tmp.name, storage_client.source_bucket)
         return get_file_hash(tmp.name)
 
-
-
+def split_file_path(path: str):
+    """
+    경로 분리: "folder/subfolder/doc.pdf" → "folder/subfolder", "doc.pdf"
+    """
+    if "/" in path:
+        parent_dir, filename = path.rsplit("/", 1)
+    else:
+        parent_dir, filename = "", path
+    return parent_dir, filename
 
 
 

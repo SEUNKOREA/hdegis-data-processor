@@ -12,18 +12,6 @@ from sqlalchemy.sql import func
 # 아래의 테이블 클래스들이 이 Base를 상속해서 만들어야 실제 테이블로 인식됨
 Base = declarative_base()
 
-class PDFDocument(Base):
-    __tablename__ = "pdf_documents"
-
-    doc_id: int = Column(String(128), primary_key=True)
-    gcs_path: str = Column(String(1000), unique=True, nullable=False)
-    uploaded_at: datetime = Column(DateTime, default=datetime.utcnow)
-    processed: int = Column(Integer, default=0)
-    processed_at: datetime = Column(DateTime, nullable=True)
-    error_message: str = Column(Text, nullable=True)
-
-    pages = relationship("PDFPage", back_populates="document", cascade="all, delete-orphan")
-
 class PageStatus(enum.Enum):
     PENDING = "PENDING"     # 아직 시도 안 함
     SUCCESS = "SUCCESS"     # 처리 완료
@@ -33,7 +21,7 @@ class PDFPage(Base):
     __tablename__ = "pdf_pages"
 
     page_id: int = Column(String(128), primary_key=True)
-    doc_id: int = Column(String(128), ForeignKey("pdf_documents.doc_id"), nullable=False)
+    doc_id: str = Column(String(128), ForeignKey("pdf_documents.doc_id"), nullable=False)
     page_number: str = Column(String(32), nullable=False)
     
     gcs_path: str = Column(String(1000), nullable=False)
@@ -44,6 +32,7 @@ class PDFPage(Base):
     embedding: str = Column(LONGTEXT, nullable=True)
     
     extracted: PageStatus = Column(Enum(PageStatus), default=PageStatus.PENDING)
+    summarized: PageStatus = Column(Enum(PageStatus), default=PageStatus.PENDING)
     embedded: PageStatus = Column(Enum(PageStatus), default=PageStatus.PENDING)
     indexed: PageStatus = Column(Enum(PageStatus), default=PageStatus.PENDING)
 
@@ -52,3 +41,15 @@ class PDFPage(Base):
     updated_at: datetime = Column(DateTime, default=func.now(), onupdate=func.now())
 
     document = relationship("PDFDocument", back_populates="pages")
+
+
+class PDFDocument(Base):
+    __tablename__ = "pdf_documents"
+
+    doc_id: str = Column(String(128), primary_key=True)
+    gcs_path: str = Column(String(1000), nullable=False)
+    created_at: datetime = Column(DateTime, default=datetime.utcnow)
+
+    pages = relationship("PDFPage", back_populates="document", cascade="all, delete-orphan")
+        # back_populates="document"     : document.pages로 페이지 접근 가능, page.document로 해당 페이지가 속한 문서 확인가능
+        # cascade="all, delete-orphan"  : 부모(PDFDocument)가 삭제되었을때 자식(PDFPage)도 자동으로 처리되도록

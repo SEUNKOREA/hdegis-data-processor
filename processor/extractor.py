@@ -54,7 +54,7 @@ def extract_text(image_path: str, client: genai.Client) -> Tuple[Optional[str], 
             config=config
         )
 
-        return result.text.strip(), None
+        return result.text, None
 
     except Exception as e:
         return None, f"텍스트 추출 오류: {e}"
@@ -135,7 +135,7 @@ def extract_summary(target_image_path: str, context_image_paths: List[str], clie
             config=config
         )
 
-        return result.text.strip(), None
+        return result.text, None
 
     except Exception as e:
         return None, f"요약 추출 오류: {e}"

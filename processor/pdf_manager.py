@@ -74,16 +74,20 @@ class PDFManager:
         Gemini를 이용해서 텍스트 추출 수행
         반환: (추출된 텍스트, 오류메시지, 상태)
         """
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # 이미지 임시 다운로드
-            local_image_path = os.path.join(tmpdir, os.path.basename(gcs_image_path))
-            self.storage.download_file(gcs_image_path, local_image_path, self.storage.target_bucket)
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # 이미지 임시 다운로드
+                local_image_path = os.path.join(tmpdir, os.path.basename(gcs_image_path))
+                self.storage.download_file(gcs_image_path, local_image_path, self.storage.target_bucket)
 
-            # 텍스트 추출
-            text, error = extract_text(local_image_path, self.genai)
-            status = PageStatus.SUCCESS if error is None else PageStatus.FAILED
+                # 텍스트 추출
+                text, error = extract_text(local_image_path, self.genai)
+                status = PageStatus.SUCCESS if error is None else PageStatus.FAILED
 
-            return text or "", error, status
+                return text or "", error, status
+        
+        except Exception as e:
+            return "", f"Extraction Exception: {e}", PageStatus.FAILED
 
 
     def invoke_summary(self, gcs_image_path: str) -> Tuple[str, str | None, PageStatus]:
@@ -91,31 +95,36 @@ class PDFManager:
         Gemini를 이용해서 해당 이미지의 문서의 첫 5페이지를 참고해서 해당 페이지의 요약 수행
         반환: (요약된 텍스트, 오류메시지, 상태)
         """
-        # doc_id 조회
-        page = self.repo.session.query(PDFPage).filter_by(gcs_path=gcs_image_path).first()
-        if not page:
-            return "", f"DB에 해당 페이지 정보 없음: {gcs_image_path}", PageStatus.FAILED
+        try:
+            # doc_id 조회
+            page = self.repo.session.query(PDFPage).filter_by(gcs_path=gcs_image_path).first()
+            if not page:
+                return "", f"DB에 해당 페이지 정보 없음: {gcs_image_path}", PageStatus.FAILED
 
-        # 첫 5페이지 GCS Path 조회
-        doc_id = page.doc_id
-        gcs_context_paths = self.repo.get_first_n_pages(doc_id, 5)
+            # 첫 5페이지 GCS Path 조회
+            doc_id = page.doc_id
+            gcs_context_paths = self.repo.get_first_n_pages(doc_id, 5)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # 현재 페이지 다운로드
-            local_image_path = os.path.join(tmpdir, os.path.basename(gcs_image_path))
-            self.storage.download_file(gcs_image_path, local_image_path, self.storage.target_bucket)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # 현재 페이지 다운로드
+                local_image_path = os.path.join(tmpdir, os.path.basename(gcs_image_path))
+                self.storage.download_file(gcs_image_path, local_image_path, self.storage.target_bucket)
 
-            # 컨텍스트 페이지 다운로드
-            local_context_paths = []
-            for gcs_path in gcs_context_paths:
-                local_path = os.path.join(tmpdir, os.path.basename(gcs_path))
-                self.storage.download_file(gcs_path, local_path, self.storage.target_bucket)
-                local_context_paths.append(local_path)
+                # 컨텍스트 페이지 다운로드
+                local_context_paths = []
+                for gcs_path in gcs_context_paths:
+                    local_path = os.path.join(tmpdir, os.path.basename(gcs_path))
+                    self.storage.download_file(gcs_path, local_path, self.storage.target_bucket)
+                    local_context_paths.append(local_path)
 
-            # 요약 추출
-            summary, error = extract_summary(local_image_path, local_context_paths, self.genai)
-            status = PageStatus.SUCCESS if error is None else PageStatus.FAILED
-            return summary or "", error, status
+                # 요약 추출
+                summary, error = extract_summary(local_image_path, local_context_paths, self.genai)
+                status = PageStatus.SUCCESS if error is None else PageStatus.FAILED
+                return summary or "", error, status
+        
+        except Exception as e:
+            return "", f"Summary Exception: {e}", PageStatus.FAILED
+
 
 
     def invoke_embedding(self, gcs_image_path: str) -> Tuple[List[float] | None, str | None, PageStatus]:

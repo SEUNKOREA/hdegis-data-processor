@@ -79,6 +79,33 @@ def run_pipeline() -> None:
         # 2. 신규문서 Split해서 DB 등록
         # ─────────────────────────────────────────────────────────
         logger.info("[Step 2] Splitting new documents and saving page metadata")
+        
+        # # 병렬처리 적용
+        # with ThreadPoolExecutor(max_workers=4) as executor:
+        #     futures = {
+        #         executor.submit(manager.invoke_split, gcs_pdf_path): (doc_id, gcs_pdf_path)
+        #         for doc_id, gcs_pdf_path in new_docs
+        #     }
+
+        #     for i, future in enumerate(as_completed(futures), 1):
+        #         doc_id, gcs_pdf_path = futures[future]
+        #         try:
+        #             # PDFDocument Table 등록
+        #             if not repo.exists_document(doc_id):
+        #                 repo.create_document(doc_id, gcs_pdf_path)
+
+        #             gcs_page_infos = future.result()  # {page_number: gcs_image_path}
+        #             for page_number, gcs_image_path in gcs_page_infos.items():
+        #                 repo.create_page_record(
+        #                     doc_id=doc_id,
+        #                     page_number=page_number,
+        #                     gcs_path=gcs_image_path,
+        #                     gcs_pdf_path=gcs_pdf_path,
+        #                 )
+        #             logger.info(" └── [%d/%d] Split and saved %d pages: %s", i, len(new_docs), len(gcs_page_infos), gcs_pdf_path)
+
+        #         except Exception as e:
+        #             logger.warning(" └── [%d/%d] Failed to split or save: %s (%s)", i, len(new_docs), gcs_pdf_path, e)
 
         # 병렬처리 미적용
         for i, (doc_id, gcs_pdf_path) in enumerate(new_docs):
@@ -112,6 +139,31 @@ def run_pipeline() -> None:
         retry   = [p for p in extraction_pages if p.extracted == PageStatus.FAILED]
         logger.info("Pages queued for text extraction: %d (new: %d, retry: %d)", len(extraction_pages), len(pending), len(retry))
 
+        # # 병렬처리 적용
+        # with ThreadPoolExecutor(max_workers=4) as executor:
+        #     futures = {}
+        #     for page in extraction_pages:
+        #         tag = "new" if page.extracted == PageStatus.PENDING else "retry"
+        #         futures[executor.submit(manager.invoke_extraction, page.gcs_path)] = (page, tag)
+
+        #     for i, future in enumerate(as_completed(futures), 1):
+        #         page, tag = futures[future]
+        #         try:
+        #             text, error, status = future.result()
+        #             repo.update_page_record(
+        #                 page_id=page.page_id,
+        #                 extracted_text=text,
+        #                 extracted=status,
+        #                 error_message=error
+        #             )
+        #             if status == PageStatus.SUCCESS:
+        #                 logger.debug(" [%d/%d] 텍스트 추출 성공 (%s): %s", i, len(extraction_pages), tag, page.gcs_path)
+        #             else:
+        #                 logger.warning(" [%d/%d] 텍스트 추출 실패 (%s): %s - %s", i, len(extraction_pages), tag, page.gcs_path, error)
+        #         except Exception as e:
+        #             logger.error(" [%d/%d] 텍스트 추출 예외 (%s): %s - %s", i, len(extraction_pages), tag, page.gcs_path, e)
+
+
         # 병렬처리 미적용
         for i, page in enumerate(extraction_pages, 1):
             try:
@@ -143,6 +195,31 @@ def run_pipeline() -> None:
         pending = [p for p in summary_pages if p.summarized == PageStatus.PENDING]
         retry   = [p for p in summary_pages if p.summarized == PageStatus.FAILED]
         logger.info("Pages queued for summary generation: %d (new: %d, retry: %d)", len(summary_pages), len(pending), len(retry))
+
+        # # 병렬처리 적용
+        # with ThreadPoolExecutor(max_workers=8) as executor:
+        #     futures = {}
+        #     for page in summary_pages:
+        #         tag = "new" if page.summarized == PageStatus.PENDING else "retry"
+        #         futures[executor.submit(manager.invoke_summary, page.gcs_path)] = (page, tag)
+
+        #     for i, future in enumerate(as_completed(futures), 1):
+        #         page, tag = futures[future]
+        #         try:
+        #             summary, error, status = future.result()
+        #             repo.update_page_record(
+        #                 page_id=page.page_id,
+        #                 summary=summary,
+        #                 summarized=status,
+        #                 error_message=error
+        #             )
+        #             if status == PageStatus.SUCCESS:
+        #                 logger.debug(" └── [%d/%d] Summary generation succeeded (%s): %s", i, len(summary_pages), tag, page.gcs_path)
+        #             else:
+        #                 logger.warning(" └── [%d/%d] Summary generation failed (%s): %s - %s", i, len(summary_pages), tag, page.gcs_path, error)
+        #                 time.sleep(60)
+        #         except Exception as e:
+        #             logger.error(" └── [%d/%d] Summary generation exception (%s): %s - %s", i, len(summary_pages), tag, page.gcs_path, e)
 
         # 병렬처리 미적용
         for i, page in enumerate(summary_pages, 1):
@@ -177,6 +254,31 @@ def run_pipeline() -> None:
         retry   = [p for p in embedding_pages if p.embedded == PageStatus.FAILED]
         logger.info("Pages queued for embedding: %d (new: %d, retry: %d)", len(embedding_pages), len(pending), len(retry))
 
+        # # 병렬처리 적용
+        # with ThreadPoolExecutor(max_workers=8) as executor:
+        #     futures = {}
+        #     for page in embedding_pages:
+        #         tag = "new" if page.embedded == PageStatus.PENDING else "retry"
+        #         futures[executor.submit(manager.invoke_embedding, page.gcs_path)] = (page, tag)
+
+        #     for i, future in enumerate(as_completed(futures), 1):
+        #         page, tag = futures[future]
+        #         try:
+        #             embedding, error, status = future.result()
+        #             repo.update_page_record(
+        #                 page_id=page.page_id,
+        #                 embedding=json.dumps(embedding),
+        #                 embedded=status,
+        #                 error_message=error
+        #             )
+        #             if status == PageStatus.SUCCESS:
+        #                 logger.debug(" └── [%d/%d] Embedding succeeded (%s): %s", i, len(embedding_pages), tag, page.gcs_path)
+        #             else:
+        #                 logger.warning(" └── [%d/%d] Embedding failed (%s): %s - %s", i, len(embedding_pages), tag, page.gcs_path, error)
+        #                 time.sleep(60)
+        #         except Exception as e:
+        #             logger.error(" └── [%d/%d] Embedding exception (%s): %s - %s", i, len(embedding_pages), tag, page.gcs_path, e)
+
         # 병렬처리 미적용
         for i, page in enumerate(embedding_pages, 1):
             try:
@@ -209,6 +311,30 @@ def run_pipeline() -> None:
         pending = [p for p in embedding_pages if p.indexed == PageStatus.PENDING]
         retry   = [p for p in embedding_pages if p.indexed == PageStatus.FAILED]
         logger.info("Pages queued for indexing: %d (new: %d, retry: %d)", len(embedding_pages), len(pending), len(retry))
+
+        # # 병렬처리 적용
+        # with ThreadPoolExecutor(max_workers=8) as executor:
+        #     futures = {}
+        #     for page in indexing_pages:
+        #         tag = "new" if page.indexed == PageStatus.PENDING else "retry"
+        #         futures[executor.submit(manager.invoke_indexing, page)] = (page, tag)
+
+        #     for i, future in enumerate(as_completed(futures), 1):
+        #         page, tag = futures[future]
+        #         try:
+        #             _, status, error = future.result()
+        #             repo.update_page_record(
+        #                 page_id=page.page_id,
+        #                 indexed=status,
+        #                 error_message=error
+        #             )
+        #             if status == PageStatus.SUCCESS:
+        #                 logger.debug(" └── [%d/%d] Indexing succeeded (%s): %s", i, len(indexing_pages), tag, page.gcs_path)
+        #             else:
+        #                 logger.warning(" └── [%d/%d] Indexing failed (%s): %s - %s", i, len(indexing_pages), tag, page.gcs_path, error)
+        #         except Exception as e:
+        #             logger.error(" └── [%d/%d] Indexing exception (%s): %s - %s", i, len(indexing_pages), tag, page.gcs_path, e)
+
 
         # 병렬처리 미적용
         for i, page in enumerate(indexing_pages, 1):

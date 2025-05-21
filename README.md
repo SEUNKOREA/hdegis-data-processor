@@ -1,8 +1,8 @@
 # hdegis-data-processor
 
 이 프로젝트는 GCS에 업로드된 PDF 문서를 자동으로 감지하고,
-해당문서를 페이지 단위로 이미지(png)로 분리한 후 텍스트 추출 및 요약을 수행하여
-결과를 MySQL DB에 저장하는 PDF 처리 파이프라인입니다.
+해당문서를 페이지 단위로 이미지(png)로 분리한 후 텍스트 추출, 요약 및 임베딩을 수행하며,
+결과를 MySQL DB에 저장하고 Elastic에 Indexing 하는 PDF 처리 자동 파이프라인입니다.
 
 ## Prerequisites
 
@@ -28,80 +28,80 @@ nohup python -u main.py > nohup-main.out 2>&1 &
 ## Structure
 
 ```
-hdegis-data-processor/
-├── main.py                        # 진입점
-├── config.py                      # 환경변수 설정
-├── README.md                      # README
-├── requirements.txt               # 의존성 목록
-├── .gitignore                     # gitignore
+├── README.md
+├── main.py                   # 진입점
+├── config.py                 # 설정값
+├── requirements.txt          # 의존성 목록
 │
-├── scheduler                      # 처리 orchestration
-│   └── orchestrator.py            # 문서 전처리 전체 파이프라인
+├── scheduler
+│   └── orchestrator.py       # 전체 파이프라인
 │
-├── storage                        # storage 관련코드 (* 추후 MinIO 확장가능)
-│   └── gcs_client.py              # GCSStorageClient 클래스 (GCS 관련코드)
+├── db
+│   ├── initialize.py         # DB 초기화
+│   ├── models.py             # ORM 모델 (SQLAlchemy) == 스키마 정의
+│   ├── repository.py         # DB에 insert/update/select 로직
+│   └── session.py            # DB 세션 초기화
 │
-├── db                             # DB 모델 및 연결 관련
-│   ├── init_db.py                 # DB Table 초기화
-│   ├── models.py                  # ORM 모델 (SQLAlchemy) == 스키마 정의
-│   ├── repository.py              # DB에 insert/update/select 로직
-│   └── session.py                 # DB 세션 초기화
+├── processor                 # 문서 전처리 로직
+│   ├── pdf_manager.py        # PDFManager 클래스
+│   ├── extractor.py          # Gemini 기반 텍스트 추출 및 요약
+│   ├── prompts.py            # extractor.py에서 활용되는 프롬프트
+│   ├── embedder.py           # 임베딩 추출
+│   └── elastic.py            # Elastic
 │
-├── processor                      # 문서 전처리 로직
-│   ├── pdf_manager.py             # PDFManager 클래스
-│   ├── extractor.py               # Gemini 기반 텍스트 추출 및 요약
-│   ├── prompts.py                 # extractor.py에서 활용되는 프롬프트
-│   └── splitter.py                # PDF → 개별 이미지(png)
+├── storage                   # storage 관련코드 (* 추후 MinIO 확장가능)
+│   └── gcs_client.py         # GCSStorageClient 클래스 (GCS 관련코드)
 │
-├── utils                          # 유틸 함수
-│   ├── utils.py
-│   └── logger.py
+├── utils                     # 유틸 함수
+│   ├── logger.py
+│   └── utils.py
 │
 └── key
-   └── pjt-dev-hdegis-app-454401-bd4fac2d452b.json
+    └── pjt-dev-hdegis-app-454401-bd4fac2d452b.json
 ```
 
 ## Pipeline
 
-1. 데이터베이스 테이블이 존재하는지 확인하고 없으면 사전에 정의한 스키마의 형태로 생성
+1. 신규 문서 감지
 
-2. GCS 버킷에서 전체 PDF 파일 목록을 수집
+   - GCS에서 PDF 목록을 가져와 로컬에서 해시를 계산.
+   - DB에 이미 존재하는 문서인지 판단 (PDFDocument Table `doc_id` 기준으로 판단).
+   - 새로운 문서만 2단계로 이동.
 
-3. 각 PDF 파일에 대해 해서(SHA-256)을 계산하여 이미 처리된 문서인지 확인
+2. 문서 Split
 
-   - 처음 처리되는 문서라면 `pdf_documents` 테이블에 등록하고 처리 대상에 포함
+   - PDF → 이미지(.png)로 분리.
+   - 각 페이지는 PDFPage 테이블에 등록.
 
-4. 3에서 탐지된 신규문서에 대해서는 다음과 같은 처리를 수행:
+3. 텍스트 추출 (OCR)
 
-   - GCS에서 PDF 파일을 임시로 다운로드 후 이미지로 분할
-   - 분할된 이미지를 `GCS_PROCESSED_BUCKET`에 업로드
-   - 업로드된 GCS 이미지 경로를 기반으로 초기 페이지 정보를 `pdf_pages` 테이블에 저장
-   - 분할해서 GCS에 업로드 및 초기정보 테이블에 저장 성공 시, `pdf_documents` 테이블에 `processed=1`, 실패 시 `processed=0`으로 상태 업데이트
-   - 각 페이지의 이미지에 대해:
-     - Gemini 모델을 사용하여 텍스트 추출 및 요약 생성
-     - 추출 결과를 `pdf_pages` 테이블에 업데이트
-     - 추출 성공 시 `pdf_pages` 테이블에 `status='SUCCESS'`, 실패 시 `status='FAILED'`로 저장
+   - Gemini API를 사용해 각 페이지 이미지에서 텍스트 추출.
+   - extracted_text 컬럼에 저장, 상태는 extracted로 관리.
 
-5. 이전 실행에서 실패했던 문서(예: 이미지 분할 실패)는 다시 전체 문서 단위로 재처리
+4. 요약 추출
 
-   - `pdf_documents` 테이블에 `processed=0 AND processed_at != NONE`
+   - 해당 페이지 + 앞선 5페이지를 컨텍스트로 사용.
+   - Gemini로 요약 수행 → summary, summarized 상태 저장.
 
-6. 이전 실행에서 실패했던 페이지(예: OCR 또는 요약 실패)는 해당 페이지 단위로 다시 처리
-   - `pdf_pages` 테이블에 status='FAILED
+5. 임베딩 생성
+
+   - 추출된 텍스트와 요약을 결합하여 임베딩 모델(Gemini Embedding)로 벡터 생성.
+   - embedding, embedded 상태 관리.
+
+6. Elasticsearch 인덱싱
+   - 위에서 생성된 텍스트, 요약, 임베딩 벡터를 Elasticsearch에 저장.
+   - indexed 상태 관리.
 
 ## Database Table Schema
 
-### 1. `pdf_documents`
+### 1. `PDFDocument`
 
-| 컬럼명         | 타입                | 설명                                                              |
-| -------------- | ------------------- | ----------------------------------------------------------------- |
-| `doc_id`       | `VARCHAR(128)` (PK) | 문서 고유 ID (해시 기반 생성)                                     |
-| `gcs_path`     | `VARCHAR(1000)`     | GCS 내 PDF 경로                                                   |
-| `processed`    | `TINYINT`           | 이미지 분할 및 업로드 성공 여부 (`1=성공`, `0=실패`, `default=0`) |
-| `processed_at` | `DATETIME`          | 마지막 분할 시도 시각                                             |
-| `created_at`   | `DATETIME`          | 문서가 등록된 시각                                                |
+| 컬럼명     | 설명                  |
+| ---------- | --------------------- |
+| `doc_id`   | SHA256 해시 (Primary) |
+| `gcs_path` | GCS 상 PDF 경로       |
 
-### 2. `pdf_pages`
+### 2. `PDFPages`
 
 | 컬럼명           | 타입                                   | 설명                                    |
 | ---------------- | -------------------------------------- | --------------------------------------- |
@@ -112,6 +112,11 @@ hdegis-data-processor/
 | `gcs_pdf_path`   | `VARCHAR(1000)`                        | 원본 PDF GCS 경로                       |
 | `extracted_text` | `LONGTEXT`                             | Gemini 기반 OCR 결과                    |
 | `summary`        | `TEXT`                                 | Gemini 기반 페이지 요약                 |
-| `status`         | `ENUM`(`PENDING`, `SUCCESS`, `FAILED`) | 페이지 처리 상태 (`default=PENDING`)    |
+| `embedding`      | `LONGTEXT`                             | 임베딩 벡터                             |
+| `extracted`      | `ENUM`(`PENDING`, `SUCCESS`, `FAILED`) | 추출 상태 (`default=PENDING`)           |
+| `summarized`     | `ENUM`(`PENDING`, `SUCCESS`, `FAILED`) | 요약 상태 (`default=PENDING`)           |
+| `embedded`       | `ENUM`(`PENDING`, `SUCCESS`, `FAILED`) | 임베딩 상태 (`default=PENDING`)         |
+| `indexed`        | `ENUM`(`PENDING`, `SUCCESS`, `FAILED`) | 인덱싱 상태 (`default=PENDING`)         |
 | `error_message`  | `TEXT`                                 | 에러 발생 시 메시지                     |
 | `created_at`     | `DATETIME`                             | 레코드 생성(페이지 등록) 시각           |
+| `updated_at`     | `DATETIME`                             | 레코드 마지막 업데이트 시각             |

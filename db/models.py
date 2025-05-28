@@ -14,7 +14,7 @@ from sqlalchemy.sql import func
 PROJECT_PATH = os.path.dirname(os.path.dirname(__file__))
 sys.path.append(PROJECT_PATH)
 
-from config import TABLENAME_PDFPAGE, TABLENAME_PDFDOCUMENT
+from config import TABLENAME_PDFPAGES, TABLENAME_PDFDOCUMENTS
 
 
 # 모든 ORM 모델의 기본이 되는 클래스를 정의
@@ -27,10 +27,10 @@ class PageStatus(enum.Enum):
     FAILED = "FAILED"       # 처리 실패
 
 class PDFPage(Base):
-    __tablename__ = TABLENAME_PDFPAGE
+    __tablename__ = TABLENAME_PDFPAGES
 
     page_id: int = Column(String(128), primary_key=True)
-    doc_id: str = Column(String(128), ForeignKey("pdf_documents.doc_id"), nullable=False)
+    doc_id: str = Column(String(128), ForeignKey(f"{TABLENAME_PDFDOCUMENTS}.doc_id"), nullable=False)
     page_number: str = Column(String(32), nullable=False)
     
     gcs_path: str = Column(String(1000), nullable=False)
@@ -53,7 +53,7 @@ class PDFPage(Base):
 
 
 class PDFDocument(Base):
-    __tablename__ = TABLENAME_PDFDOCUMENT
+    __tablename__ = TABLENAME_PDFDOCUMENTS
 
     doc_id: str = Column(String(128), primary_key=True)
     gcs_path: str = Column(String(1000), nullable=False)

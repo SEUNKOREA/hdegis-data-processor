@@ -8,7 +8,7 @@ sys.path.append(PROJECT_PATH)
 from storage.gcs_client import GCSStorageClient
 
 
-def get_file_hash(file_path, hash_type='sha256'):
+def get_file_hash(file_path: str, extra_data: str="", hash_type='sha256'):
     # 사용할 해시 알고리즘 선택
     hash_func = getattr(hashlib, hash_type)()
 
@@ -16,6 +16,10 @@ def get_file_hash(file_path, hash_type='sha256'):
     with open(file_path, 'rb') as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_func.update(chunk)
+
+    # extra_data (경로 등)도 바이트로 변환하여 해시에 추가
+    if extra_data: 
+        hash_func.update(extra_data.encode('utf-8'))
 
     return hash_func.hexdigest()
 
@@ -25,7 +29,7 @@ def compute_doc_hash(storage_client: GCSStorageClient, gcs_pdf_path: str) -> str
     import tempfile
     with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
         storage_client.download_file(gcs_pdf_path, tmp.name, storage_client.source_bucket)
-        return get_file_hash(tmp.name)
+        return get_file_hash(tmp.name, extra_data=gcs_pdf_path)
 
 def split_file_path(path: str):
     """

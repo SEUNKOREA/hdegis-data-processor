@@ -8,7 +8,7 @@ sys.path.append(PROJECT_PATH)
 from db.models import Base
 from db.session import engine
 from utils.logger import get_logger
-from config import LOG_LEVEL
+from config import LOG_LEVEL, TABLENAME_PDFDOCUMENTS, TABLENAME_PDFPAGES
 
 logger = get_logger(__name__, LOG_LEVEL)
 
@@ -35,7 +35,7 @@ def initialize_tables():
     existing_tables = inspector.get_table_names()
 
     # 최소한의 기준 테이블 존재 여부 판단
-    if "pdf_documents" not in existing_tables or "pdf_pages" not in existing_tables:
+    if TABLENAME_PDFPAGES not in existing_tables or TABLENAME_PDFDOCUMENTS not in existing_tables:
         logger.info(" ┌── There is no tables → Try to create tables")
         Base.metadata.create_all(bind=engine)
         logger.info(" └── Created tables!")

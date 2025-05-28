@@ -4,6 +4,6 @@
 sample.png
 test_ieee.pdf
 
-nohup-main.out
+*.out
 
 .env

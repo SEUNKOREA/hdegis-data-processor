@@ -12,6 +12,7 @@
    ```
    conda create --name <가상환경 이름> python=3.12
    conda activate <가상환경 이름>
+   pip install -r requirements.txt
    ```
 
 ## Run

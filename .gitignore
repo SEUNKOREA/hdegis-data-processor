@@ -7,3 +7,5 @@ test_ieee.pdf
 *.out
 
 .env
+
+key/*.json

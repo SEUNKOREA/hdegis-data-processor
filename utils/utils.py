@@ -26,6 +26,16 @@ def get_file_hash(file_path: str, extra_data: str = "", hash_type="sha256"):
 
     return hash_func.hexdigest()
 
+def compute_content_hash(storage_client: GCSStorageClient, gcs_pdf_path: str) -> str:
+    """파일 내용만으로 해시 계산 (이동 감지용)"""
+    import tempfile
+    
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+        storage_client.download_file(
+            gcs_pdf_path, tmp.name, storage_client.source_bucket
+        )
+        return get_file_hash(tmp.name)  # extra_data 제거
+
 
 def compute_doc_hash(storage_client: GCSStorageClient, gcs_pdf_path: str) -> str:
     """Download a PDF to a tmp file and return its sha-256 hash."""

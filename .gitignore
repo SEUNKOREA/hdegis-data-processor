@@ -9,3 +9,9 @@ test_ieee.pdf
 .env
 
 key/*.json
+
+data/
+
+migration_*.py
+backup_*
+populate_content_hash.py

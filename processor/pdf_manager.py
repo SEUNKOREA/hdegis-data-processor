@@ -16,7 +16,7 @@ from processor.extractor import extract_text, extract_summary
 from processor.embedder import get_text_embedding
 from processor.elastic import ESConnector
 from db.repository import Repository
-from db.models import PDFPage, PageStatus
+from db.models import PDFPage, PageStatus, PDFDocument
 from utils.utils import split_file_path
 from utils.logger import get_logger
 from config import LOG_LEVEL, INDEX_NAME
@@ -159,6 +159,7 @@ class PDFManager:
                 "page_id": page.page_id,
                 "doc_id": page.doc_id,
                 "page_number": page.page_number,
+                "status":page.status.value,
                 "gcs_path": page.gcs_path,
                 "gcs_pdf_path": page.gcs_pdf_path,
                 "extracted_text": page.extracted_text,
